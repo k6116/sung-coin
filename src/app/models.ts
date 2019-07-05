@@ -17,10 +17,10 @@ export class Block {
   // Any change to the hash calculation will output a completely different hash every time.
   nonce = 0;
 
-  constructor(timestamp: any, transactions: any) {
+  constructor(timestamp: any, transactions: any, previousHash = '') {
     this.timestamp = timestamp;
     this.transactions = transactions;
-    this.previousHash = '';
+    this.previousHash = previousHash;
     this.hash = this.calculateHash();
   }
 
@@ -73,24 +73,12 @@ export class Blockchain {
 
   // The genesis block is the first block in a blockchain. Does not contain a 'previous hash' for this reason.
   createGenesisBlock() {
-    return new Block('2019-07-02', { amount: 0 });
+    return new Block(Date.now(), { amount: 0 });
   }
 
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
   }
-
-  // addBlock(newBlock: Block) {
-
-  //   // First store the hash of the previous block to prevent tampering
-  //   newBlock.previousHash = this.getLatestBlock().hash;
-
-  //   // Mine the new block
-  //   newBlock.mineBlock(this.difficulty);
-
-  //   // Add the block to the blockchain
-  //   this.chain.push(newBlock);
-  // }
 
   minePendingTransactions(miningRewardAddress: string) {
 
@@ -98,13 +86,13 @@ export class Blockchain {
     const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
     this.pendingTransactions.push(rewardTx);
 
-    const block = new Block(Date.now(), this.pendingTransactions);
-
+    const block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
 
-    console.log('Block mined successfully!');
+    console.log('Block successfully mined!', block);
     this.chain.push(block);
 
+    this.pendingTransactions = [];
   }
 
   // Add a new transaction to the queue
@@ -130,11 +118,11 @@ export class Blockchain {
       for (const trans of block.transactions) {
 
         if (trans.fromAddress === address) {
-          balance -= trans.amount;
+          balance -= Number(trans.amount);
         }
 
         if (trans.toAddress === address) {
-          balance += trans.amount;
+          balance += Number(trans.amount);
         }
 
       }
@@ -143,8 +131,32 @@ export class Blockchain {
     return balance;
   }
 
+ // Returns a list of all transactions that happened
+ // to and from the given wallet address.
+  getAllTransactionsForWallet(address) {
+    const txs = [];
+
+    for (const block of this.chain) {
+      for (const tx of block.transactions) {
+        if (tx.fromAddress === address || tx.toAddress === address) {
+          txs.push(tx);
+        }
+      }
+    }
+
+    return txs;
+  }
+
   // Check if the blockchain has been tampered with
   isChainValid() {
+
+    // Check if the Genesis block hasn't been tampered with by comparing
+    // the output of createGenesisBlock with the first block on our chain
+    const realGenesis = JSON.stringify(this.createGenesisBlock());
+
+    if (realGenesis !== JSON.stringify(this.chain[0])) {
+      return false;
+    }
 
     for (let i = 1; i < this.chain.length; i++) {
 
@@ -180,11 +192,13 @@ export class Transaction {
   toAddress: string;
   amount: number;
   signature: string;
+  timestamp: any;
 
   constructor(fromAddress: string, toAddress: string, amount: number) {
     this.fromAddress = fromAddress;
     this.toAddress = toAddress;
     this.amount = amount;
+    this.timestamp = Date.now();
   }
 
   calculateHash() {
@@ -193,7 +207,8 @@ export class Transaction {
 
   // Signing a key is the act of verifying a public key
   // For example, if I want you to send me secret data, I need to send you my public key.
-  //  But how can you know that when I send you my public key, it wasn't intercepted by someone else and you won't be sending data to them instead
+  //  But how can you know that when I send you my public key,
+  //   it wasn't intercepted by someone else and you won't be sending data to them instead
   //  If we both have a third person that we trust and have a secure channel with them, we can ask that person to sign my public key
   //  So when you receive my public key signed by that third person, you know it is my public key
   signTransaction(signingKey: any) {
